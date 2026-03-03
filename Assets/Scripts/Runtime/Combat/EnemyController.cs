@@ -85,6 +85,9 @@ namespace RoguePulse
         private Vector3 _lastStuckCheckPos;
         private Vector3 _avoidDirection;
         private Vector3 _stuckNudgeDirection;
+        private float _nextGroundCorrection;
+        private const float GroundCorrectionInterval = 0.25f;
+        private const float GroundCorrectionThreshold = 0.35f;
 
         public EnemyArchetype Archetype => archetype;
         public float AttackDamage => attackDamage;
@@ -301,7 +304,7 @@ namespace RoguePulse
             }
 
             bool grounded = _cc.isGrounded || ProbeGrounded();
-            if (grounded && _vertSpeed < groundedStickVelocity)
+            if (grounded)
             {
                 _vertSpeed = groundedStickVelocity;
             }
@@ -315,10 +318,12 @@ namespace RoguePulse
             _cc.Move(velocity * Time.deltaTime);
 
             grounded = _cc.isGrounded || ProbeGrounded();
-            if (grounded && _vertSpeed < groundedStickVelocity)
+            if (grounded)
             {
                 _vertSpeed = groundedStickVelocity;
             }
+
+            PeriodicGroundCorrection();
         }
 
         private bool ProbeGrounded()
@@ -813,6 +818,32 @@ namespace RoguePulse
             pos.y = groundY - feetLocalY + feetGroundClearance;
             transform.position = pos;
             _vertSpeed = 0f;
+        }
+
+        private void PeriodicGroundCorrection()
+        {
+            if (_cc == null || Time.time < _nextGroundCorrection)
+            {
+                return;
+            }
+
+            _nextGroundCorrection = Time.time + GroundCorrectionInterval;
+
+            if (!TryGetGroundHeight(transform.position, out float groundY))
+            {
+                return;
+            }
+
+            float feetWorldY = transform.position.y + _cc.center.y - _cc.height * 0.5f;
+            float sinkAmount = groundY - feetWorldY;
+            if (sinkAmount > GroundCorrectionThreshold)
+            {
+                float feetLocalY = _cc.center.y - _cc.height * 0.5f;
+                Vector3 pos = transform.position;
+                pos.y = groundY - feetLocalY + feetGroundClearance;
+                transform.position = pos;
+                _vertSpeed = groundedStickVelocity;
+            }
         }
 
         private bool TryGetGroundHeight(Vector3 referencePos, out float groundY)
