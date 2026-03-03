@@ -1074,14 +1074,25 @@ namespace RoguePulse
                 shootClip = _preferDualBladeAttackOverrides ? rangedShootClip : dualComboAttackClip;
             }
 
-            RuntimeAnimatorController baseController = runtimeController;
+            // ── Reuse existing AnimatorOverrideController when possible ──
+            // Creating a new AnimatorOverrideController and assigning it to
+            // _animator.runtimeAnimatorController resets the animator state machine,
+            // which causes weapon-switch triggers (DualGun, Gun, etc.) to be lost.
+            // By reusing the existing one, ApplyOverrides() swaps clips in-place
+            // without resetting the state machine.
             AnimatorOverrideController existingOverride = runtimeController as AnimatorOverrideController;
-            if (existingOverride != null && existingOverride.runtimeAnimatorController != null)
+            bool reusingExistingOverride = existingOverride != null;
+
+            AnimatorOverrideController overrideController;
+            if (reusingExistingOverride)
             {
-                baseController = existingOverride.runtimeAnimatorController;
+                overrideController = existingOverride;
+            }
+            else
+            {
+                overrideController = new AnimatorOverrideController(runtimeController);
             }
 
-            AnimatorOverrideController overrideController = new AnimatorOverrideController(baseController);
             var overrides = new List<KeyValuePair<AnimationClip, AnimationClip>>(overrideController.overridesCount);
             overrideController.GetOverrides(overrides);
 
@@ -1223,13 +1234,25 @@ namespace RoguePulse
 
             if (replacedCount <= 0)
             {
-                Debug.LogWarning("[PlayerController] Custom clips loaded, but no matching states were found to override.", this);
+                if (!reusingExistingOverride)
+                {
+                    Debug.LogWarning("[PlayerController] Custom clips loaded, but no matching states were found to override.", this);
+                }
+
                 return;
             }
 
             overrideController.ApplyOverrides(overrides);
-            _animator.runtimeAnimatorController = overrideController;
-            Debug.Log($"[PlayerController] Applied {replacedCount} custom clip overrides from {customClips.Length} custom clips.", this);
+
+            if (!reusingExistingOverride)
+            {
+                // First-time assignment — this resets the animator state machine,
+                // so we must re-fire the weapon trigger afterward.
+                _animator.runtimeAnimatorController = overrideController;
+                _lastTriggeredSoldierWeapon = (SoldierWeaponType)(-1);
+                FireSoldierWeaponTrigger(true);
+            }
+            // When reusing, ApplyOverrides() swaps clips in-place; no state reset.
         }
 
         private AnimationClip[] LoadAllCustomClipsFromResources()
