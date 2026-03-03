@@ -86,8 +86,9 @@ namespace RoguePulse
         private Vector3 _avoidDirection;
         private Vector3 _stuckNudgeDirection;
         private float _nextGroundCorrection;
-        private const float GroundCorrectionInterval = 0.25f;
-        private const float GroundCorrectionThreshold = 0.35f;
+        private const float GroundCorrectionInterval = 0.15f;
+        private const float GroundCorrectionThreshold = 0.15f;
+        private int _spawnGraceFrames;
 
         public EnemyArchetype Archetype => archetype;
         public float AttackDamage => attackDamage;
@@ -105,6 +106,7 @@ namespace RoguePulse
             _lastStuckCheckPos = transform.position;
             _nextTargetRefresh = 0f;
             _nextStuckCheck = 0f;
+            _spawnGraceFrames = 8;
 
             if (!isAirborne)
             {
@@ -248,6 +250,7 @@ namespace RoguePulse
             feetGroundClearance = Mathf.Clamp(feetClearance, 0f, 0.2f);
 
             EnsureCharacterControllerShape();
+            _spawnGraceFrames = Mathf.Max(_spawnGraceFrames, 6);
             if (!isAirborne)
             {
                 SnapControllerToGround();
@@ -300,6 +303,16 @@ namespace RoguePulse
             if (_cc == null)
             {
                 transform.position += planarVelocity * Time.deltaTime;
+                return;
+            }
+
+            // During spawn grace period, force snap to ground every frame
+            // to counteract CC shape changes from SpawnDirector setup
+            if (_spawnGraceFrames > 0)
+            {
+                _spawnGraceFrames--;
+                SnapControllerToGround();
+                _vertSpeed = groundedStickVelocity;
                 return;
             }
 
@@ -814,9 +827,16 @@ namespace RoguePulse
             }
 
             float feetLocalY = _cc.center.y - _cc.height * 0.5f;
+
+            // Disable CC temporarily so direct position write takes effect
+            bool ccWasEnabled = _cc.enabled;
+            _cc.enabled = false;
+
             Vector3 pos = transform.position;
             pos.y = groundY - feetLocalY + feetGroundClearance;
             transform.position = pos;
+
+            _cc.enabled = ccWasEnabled;
             _vertSpeed = 0f;
         }
 
@@ -839,9 +859,15 @@ namespace RoguePulse
             if (sinkAmount > GroundCorrectionThreshold)
             {
                 float feetLocalY = _cc.center.y - _cc.height * 0.5f;
+
+                bool ccWasEnabled = _cc.enabled;
+                _cc.enabled = false;
+
                 Vector3 pos = transform.position;
                 pos.y = groundY - feetLocalY + feetGroundClearance;
                 transform.position = pos;
+
+                _cc.enabled = ccWasEnabled;
                 _vertSpeed = groundedStickVelocity;
             }
         }

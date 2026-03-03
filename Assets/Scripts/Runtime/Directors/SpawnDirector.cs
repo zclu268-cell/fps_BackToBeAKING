@@ -1384,9 +1384,17 @@ namespace RoguePulse
             }
 
             float feetLocalY = GetControllerFeetLocalY(enemy);
+
+            // Disable CC temporarily so direct position writes take effect
+            CharacterController cc = enemy.GetComponent<CharacterController>();
+            bool ccWasEnabled = cc != null && cc.enabled;
+            if (cc != null) cc.enabled = false;
+
             Vector3 pos = enemy.transform.position;
             pos.y = groundY - feetLocalY + Mathf.Max(0f, clearance);
             enemy.transform.position = pos;
+
+            if (cc != null) cc.enabled = ccWasEnabled;
         }
 
         private IEnumerator ForceGroundSnapForFrames(
@@ -1395,7 +1403,7 @@ namespace RoguePulse
             float clearance,
             int frameCount)
         {
-            int frames = Mathf.Max(1, frameCount);
+            int frames = Mathf.Clamp(frameCount, 1, 30);
             for (int i = 0; i < frames; i++)
             {
                 if (enemy == null)
@@ -1406,9 +1414,18 @@ namespace RoguePulse
                 if (TryGetGroundYFromSpawnMask(enemy.transform.position, enemy.transform, out float groundY))
                 {
                     float feetLocalY = GetControllerFeetLocalY(enemy);
+
+                    // Disable CC temporarily so direct position writes take effect
+                    CharacterController cc = enemy.GetComponent<CharacterController>();
+                    bool ccWasEnabled = cc != null && cc.enabled;
+                    if (cc != null) cc.enabled = false;
+
                     Vector3 pos = enemy.transform.position;
                     pos.y = groundY - feetLocalY + Mathf.Max(0f, clearance);
                     enemy.transform.position = pos;
+
+                    if (cc != null) cc.enabled = ccWasEnabled;
+
                     if (visualRoot != null)
                     {
                         AlignVisualFeetToCapsuleBase(enemy, visualRoot, clearance);
