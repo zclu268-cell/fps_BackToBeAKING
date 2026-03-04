@@ -43,8 +43,8 @@ namespace RoguePulse
         [SerializeField, Range(12f, 18f)] private float rotationSmooth = 15f;
 
         [Header("Input")]
-        [SerializeField, Range(1.5f, 2.5f)] private float mouseSensitivityX = 2f;
-        [SerializeField, Range(1.2f, 2.0f)] private float mouseSensitivityY = 1.6f;
+        [SerializeField, Range(0.3f, 2.5f)] private float mouseSensitivityX = 1f;
+        [SerializeField, Range(0.2f, 2.0f)] private float mouseSensitivityY = 0.8f;
         [SerializeField] private bool invertY;
 
         [Header("Occlusion")]
@@ -168,7 +168,7 @@ namespace RoguePulse
                 return;
             }
 
-            if (allowViewToggle && Input.GetKeyDown(toggleViewKey))
+            if (allowViewToggle && InputCompat.GetKeyDown(toggleViewKey))
             {
                 viewMode = viewMode == CameraViewMode.FirstPerson
                     ? CameraViewMode.ThirdPerson
@@ -176,8 +176,8 @@ namespace RoguePulse
                 ApplyViewModeSideEffects(force: true);
             }
 
-            _targetYaw += Input.GetAxis("Mouse X") * mouseSensitivityX;
-            float pitchDelta = Input.GetAxis("Mouse Y") * mouseSensitivityY;
+            _targetYaw += InputCompat.GetAxis("Mouse X") * mouseSensitivityX;
+            float pitchDelta = InputCompat.GetAxis("Mouse Y") * mouseSensitivityY;
             _targetPitch += invertY ? pitchDelta : -pitchDelta;
             _targetPitch = Mathf.Clamp(_targetPitch, minPitch, maxPitch);
         }
@@ -306,13 +306,13 @@ namespace RoguePulse
                 return;
             }
 
-            if (_cursorLocked && Input.GetKeyDown(unlockKey))
+            if (_cursorLocked && InputCompat.GetKeyDown(unlockKey))
             {
                 SetCursorLocked(false);
                 return;
             }
 
-            if (!_cursorLocked && Input.GetMouseButtonDown(0))
+            if (!_cursorLocked && InputCompat.GetMouseButtonDown(0))
             {
                 SetCursorLocked(true);
             }
@@ -540,3 +540,4 @@ namespace RoguePulse
         }
     }
 }
+

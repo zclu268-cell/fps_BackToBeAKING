@@ -26,7 +26,7 @@ namespace RoguePulse
             }
 
             GameHUD.Instance?.SetInteractionPrompt(best.Prompt);
-            if (Input.GetKeyDown(KeyCode.E) && best.CanInteract(gameObject))
+            if (InputCompat.GetKeyDown(KeyCode.E) && best.CanInteract(gameObject))
             {
                 best.Interact(gameObject);
             }

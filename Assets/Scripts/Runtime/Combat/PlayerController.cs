@@ -14,13 +14,25 @@ namespace RoguePulse
         private static readonly int SpeedHash = Animator.StringToHash("Speed");
         private static readonly int MoveXHash = Animator.StringToHash("MoveX");
         private static readonly int MoveYHash = Animator.StringToHash("MoveY");
+        private static readonly int HorizontalHash = Animator.StringToHash("Horizontal");
+        private static readonly int VerticalHash = Animator.StringToHash("Vertical");
         private static readonly int VerticalSpeedHash = Animator.StringToHash("VerticalSpeed");
+        private static readonly int MovingHash = Animator.StringToHash("Moving");
         private static readonly int RunningHash = Animator.StringToHash("Running");
         private static readonly int IsRunningHash = Animator.StringToHash("IsRunning");
         private static readonly int GroundedHash = Animator.StringToHash("Grounded");
         private static readonly int IsGroundedHash = Animator.StringToHash("IsGrounded");
         private static readonly int CrouchingHash = Animator.StringToHash("Crouching");
         private static readonly int IsCrouchingHash = Animator.StringToHash("IsCrouching");
+        private static readonly int CrouchedHash = Animator.StringToHash("Crouched");
+        private static readonly int JumpingBoolHash = Animator.StringToHash("Jumping");
+        private static readonly int FireModeHash = Animator.StringToHash("FireMode");
+        private static readonly int ItemEquipedHash = Animator.StringToHash("ItemEquiped");
+        private static readonly int ItemsWieldingIdentifierHash = Animator.StringToHash("ItemsWieldingIdentifier");
+        private static readonly int JUTPSPunchHash = Animator.StringToHash("Punch");
+        private static readonly int JUTPSTwoHandMeleeAttackHash = Animator.StringToHash("TwoHandMeleeAttack");
+        private static readonly int JUTPSOneHandMeleeAttackHash = Animator.StringToHash("OneHandMeleeAttack");
+        private static readonly int JUTPSDualHandMeleeAttackHash = Animator.StringToHash("DualHandMeleeAttack");
         private static readonly int JumpHash = Animator.StringToHash("Jump");
         private static readonly int LandHash = Animator.StringToHash("Land");
         private static readonly int TalkHash = Animator.StringToHash("Talk");
@@ -128,6 +140,10 @@ namespace RoguePulse
         [SerializeField] private GameObject meleeHitEffectPrefab;
         [SerializeField, Min(0f)] private float meleeHitEffectLifetime = 0.9f;
 
+        [Header("Survivability")]
+        [SerializeField, Min(1f)] private float startingMaxHp = 220f;
+        [SerializeField] private bool refillHpOnStart = true;
+
         [Header("Animation (Optional)")]
         [SerializeField] private Animator animator;
         [SerializeField] private float animatorDampTime = 0.08f;
@@ -165,8 +181,16 @@ namespace RoguePulse
         [SerializeField] private float visualFeetClearance = 0.012f;
         [SerializeField, Range(1, 30)] private int startGroundSnapFrames = 20;
         [SerializeField] private bool autoSyncSceneGroundColliders = true;
-        [SerializeField, Min(20f)] private float sceneGroundColliderSyncRadius = 380f;
+        [SerializeField, Min(20f)] private float sceneGroundColliderSyncRadius = 520f;
+        [SerializeField, Min(0.1f)] private float sceneGroundColliderSyncInterval = 0.45f;
         [SerializeField] private bool sanitizeVisualModelPhysicsOnStart = true;
+
+        [Header("Void Recovery")]
+        [SerializeField] private bool enableVoidRecovery = true;
+        [SerializeField] private float absoluteVoidY = -4f;
+        [SerializeField, Min(0.5f)] private float voidRecoveryDropThreshold = 2.6f;
+        [SerializeField, Min(0.1f)] private float voidRecoveryCooldown = 0.45f;
+        [SerializeField, Min(0f)] private float voidRecoveryLift = 0.08f;
 
         private CharacterController _cc;
         private PlayerStats _stats;
@@ -177,10 +201,14 @@ namespace RoguePulse
         private Vector3 _planarVelocity;
         private float _verticalVelocity;
         private float _nextShootTime;
+        private float _nextSceneGroundColliderSyncTime;
+        private float _nextVoidRecoveryAllowedTime;
         private float _defaultHeight;
         private float _defaultStepOffset;
         private Vector3 _defaultCenter;
         private float _controllerFeetLocalY;
+        private Vector3 _lastSafeGroundedPosition;
+        private bool _hasSafeGroundedPosition;
 
         private bool _wantsCrouch;
         private bool _jumpPressed;
@@ -202,13 +230,25 @@ namespace RoguePulse
         private bool _hasSpeed;
         private bool _hasMoveX;
         private bool _hasMoveY;
+        private bool _hasHorizontal;
+        private bool _hasVertical;
         private bool _hasVerticalSpeed;
+        private bool _hasMoving;
         private bool _hasRunning;
         private bool _hasIsRunning;
         private bool _hasGrounded;
         private bool _hasIsGrounded;
         private bool _hasCrouching;
         private bool _hasIsCrouching;
+        private bool _hasCrouched;
+        private bool _hasJumpingBool;
+        private bool _hasFireMode;
+        private bool _hasItemEquiped;
+        private bool _hasItemsWieldingIdentifier;
+        private bool _hasJUTPSPunch;
+        private bool _hasJUTPSTwoHandMeleeAttack;
+        private bool _hasJUTPSOneHandMeleeAttack;
+        private bool _hasJUTPSDualHandMeleeAttack;
         private bool _hasJump;
         private bool _hasLand;
         private bool _hasTalk;
@@ -244,6 +284,7 @@ namespace RoguePulse
         private bool _hasArcherStrafeShootingR;
         private bool _hasArcherUnsheathe;
         private bool _useArcherTriggerAnimator;
+        private bool _usesJUTPSAnimator;
 
         private SoldierLocomotionState _soldierLocomotionState = SoldierLocomotionState.Unknown;
         private bool _soldierCrouchInitialized;
@@ -268,6 +309,7 @@ namespace RoguePulse
             _cc = GetComponent<CharacterController>();
             _stats = GetComponent<PlayerStats>();
             _damageable = GetComponent<Damageable>();
+            EnsureStartingHealth();
 
             _defaultHeight = _cc.height;
             _defaultCenter = _cc.center;
@@ -294,6 +336,27 @@ namespace RoguePulse
             }
         }
 
+        private void EnsureStartingHealth()
+        {
+            if (_damageable == null)
+            {
+                return;
+            }
+
+            float targetMaxHp = Mathf.Max(1f, startingMaxHp);
+            float addAmount = targetMaxHp - _damageable.MaxHp;
+            if (addAmount > 0.01f)
+            {
+                _damageable.AddMaxHp(addAmount, refill: true);
+                return;
+            }
+
+            if (refillHpOnStart)
+            {
+                _damageable.Heal(_damageable.MaxHp);
+            }
+        }
+
         private void Start()
         {
             if (cameraTransform == null && Camera.main != null)
@@ -307,6 +370,9 @@ namespace RoguePulse
             {
                 StartCoroutine(SnapToGroundAtStartRoutine());
             }
+            CacheSafeGroundedPosition();
+            _nextSceneGroundColliderSyncTime = 0f;
+            _nextVoidRecoveryAllowedTime = 0f;
 
             InitializeSoldierTriggerAnimator();
             InitializeArcherTriggerAnimator();
@@ -323,11 +389,11 @@ namespace RoguePulse
             }
             else
             {
-                Debug.Log($"[PlayerController] Animator OK — Controller={_animator.runtimeAnimatorController.name}, " +
-                          $"Speed={_hasSpeed}, MoveX={_hasMoveX}, MoveY={_hasMoveY}, " +
+                Debug.Log($"[PlayerController] Animator OK - Controller={_animator.runtimeAnimatorController.name}, " +
+                          $"Speed={_hasSpeed}, MoveX={_hasMoveX}, MoveY={_hasMoveY}, H={_hasHorizontal}, V={_hasVertical}, Moving={_hasMoving}, " +
                           $"Grounded={_hasGrounded}, IsGrounded={_hasIsGrounded}, " +
-                          $"Jump={_hasJump}, Land={_hasLand}, " +
-                          $"SoldierTrigger={_useSoldierTriggerAnimator}, ArcherTrigger={_useArcherTriggerAnimator}", this);
+                          $"Jump={_hasJump}, Jumping={_hasJumpingBool}, Land={_hasLand}, Crouched={_hasCrouched}, " +
+                          $"SoldierTrigger={_useSoldierTriggerAnimator}, ArcherTrigger={_useArcherTriggerAnimator}, UsesJUTPS={_usesJUTPSAnimator}", this);
             }
             #endif
         }
@@ -344,10 +410,17 @@ namespace RoguePulse
                 return;
             }
 
+            TickSceneGroundColliderSync();
             _aimPoint = GetCenterAimPoint();
             ReadInput();
             TickCrouch();
             TickMovement();
+            if (TryRecoverFromVoid())
+            {
+                _aimPoint = GetCenterAimPoint();
+                TickAnimator();
+                return;
+            }
             TickFacing();
             TickShoot();
             TickAnimator();
@@ -355,29 +428,29 @@ namespace RoguePulse
 
         private void ReadInput()
         {
-            _moveInput = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+            _moveInput = new Vector2(InputCompat.GetAxisRaw("Horizontal"), InputCompat.GetAxisRaw("Vertical"));
             // Fallback for projects where legacy Input axes are missing/misconfigured.
             if (_moveInput.sqrMagnitude < 0.0001f)
             {
                 float x = 0f;
                 float y = 0f;
 
-                if (Input.GetKey(KeyCode.A))
+                if (InputCompat.GetKey(KeyCode.A))
                 {
                     x -= 1f;
                 }
 
-                if (Input.GetKey(KeyCode.D))
+                if (InputCompat.GetKey(KeyCode.D))
                 {
                     x += 1f;
                 }
 
-                if (Input.GetKey(KeyCode.S))
+                if (InputCompat.GetKey(KeyCode.S))
                 {
                     y -= 1f;
                 }
 
-                if (Input.GetKey(KeyCode.W))
+                if (InputCompat.GetKey(KeyCode.W))
                 {
                     y += 1f;
                 }
@@ -390,7 +463,7 @@ namespace RoguePulse
                 _moveInput.Normalize();
             }
 
-            _jumpPressed = Input.GetButtonDown("Jump") || Input.GetKeyDown(KeyCode.Space);
+            _jumpPressed = InputCompat.GetButtonDown("Jump") || InputCompat.GetKeyDown(KeyCode.Space);
 
             if (!enableCrouch)
             {
@@ -400,9 +473,9 @@ namespace RoguePulse
 
             if (holdToCrouch)
             {
-                _wantsCrouch = Input.GetKey(crouchKey);
+                _wantsCrouch = InputCompat.GetKey(crouchKey);
             }
-            else if (Input.GetKeyDown(crouchKey))
+            else if (InputCompat.GetKeyDown(crouchKey))
             {
                 _wantsCrouch = !_wantsCrouch;
             }
@@ -472,7 +545,7 @@ namespace RoguePulse
             }
 
             bool hasMoveInput = _moveInput.sqrMagnitude > 0.0001f;
-            bool sprintInput = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+            bool sprintInput = InputCompat.GetKey(KeyCode.LeftShift) || InputCompat.GetKey(KeyCode.RightShift);
             IsSprinting = sprintInput && !IsCrouching && hasMoveInput && CanSprintWithCurrentInput();
 
             float speed = (IsSprinting ? sprintSpeed : moveSpeed) * _stats.MoveSpeedMultiplier;
@@ -533,11 +606,16 @@ namespace RoguePulse
             {
                 _canDoubleJump = false;
             }
+
+            if (IsGrounded)
+            {
+                CacheSafeGroundedPosition();
+            }
         }
 
         private void TickFacing()
         {
-            bool isAimingInput = Input.GetMouseButton(1) || Input.GetMouseButton(0);
+            bool isAimingInput = InputCompat.GetMouseButton(1) || InputCompat.GetMouseButton(0);
             bool shouldFaceAim = alwaysFaceAimPoint || isAimingInput;
 
             Vector3 desiredDirection = Vector3.zero;
@@ -569,7 +647,7 @@ namespace RoguePulse
 
         private void TickShoot()
         {
-            if (!Input.GetMouseButton(0) || Time.time < _nextShootTime)
+            if (!InputCompat.GetMouseButton(0) || Time.time < _nextShootTime)
             {
                 return;
             }
@@ -717,6 +795,11 @@ namespace RoguePulse
 
         private void TriggerPrimaryAttackAnimation()
         {
+            if (TryTriggerJUTPSPrimaryAttack())
+            {
+                return;
+            }
+
             if (driveTriggerAnimator && _useSoldierTriggerAnimator && _hasSoldierShoot01 && _animator != null)
             {
                 FireSoldierWeaponTrigger();
@@ -735,6 +818,84 @@ namespace RoguePulse
             }
         }
 
+        private bool TryTriggerJUTPSPrimaryAttack()
+        {
+            if (!_usesJUTPSAnimator || _animator == null)
+            {
+                return false;
+            }
+
+            int hash = 0;
+            if (useMeleePrimaryAttack)
+            {
+                if (_hasJUTPSDualHandMeleeAttack)
+                {
+                    hash = JUTPSDualHandMeleeAttackHash;
+                }
+                else if (_hasJUTPSOneHandMeleeAttack)
+                {
+                    hash = JUTPSOneHandMeleeAttackHash;
+                }
+                else if (_hasJUTPSTwoHandMeleeAttack)
+                {
+                    hash = JUTPSTwoHandMeleeAttackHash;
+                }
+                else if (_hasJUTPSPunch)
+                {
+                    hash = JUTPSPunchHash;
+                }
+            }
+            else
+            {
+                switch (soldierWeapon)
+                {
+                    case SoldierWeaponType.Gun:
+                        if (_hasJUTPSOneHandMeleeAttack)
+                        {
+                            hash = JUTPSOneHandMeleeAttackHash;
+                        }
+                        break;
+                    case SoldierWeaponType.DualGun:
+                        if (_hasJUTPSDualHandMeleeAttack)
+                        {
+                            hash = JUTPSDualHandMeleeAttackHash;
+                        }
+                        break;
+                    case SoldierWeaponType.None:
+                        if (_hasJUTPSPunch)
+                        {
+                            hash = JUTPSPunchHash;
+                        }
+                        break;
+                }
+
+                if (hash == 0 && _hasJUTPSTwoHandMeleeAttack)
+                {
+                    hash = JUTPSTwoHandMeleeAttackHash;
+                }
+                else if (hash == 0 && _hasJUTPSOneHandMeleeAttack)
+                {
+                    hash = JUTPSOneHandMeleeAttackHash;
+                }
+                else if (hash == 0 && _hasJUTPSDualHandMeleeAttack)
+                {
+                    hash = JUTPSDualHandMeleeAttackHash;
+                }
+                else if (hash == 0 && _hasJUTPSPunch)
+                {
+                    hash = JUTPSPunchHash;
+                }
+            }
+
+            if (hash == 0)
+            {
+                return false;
+            }
+
+            _animator.SetTrigger(hash);
+            return true;
+        }
+
         private void TickAnimator()
         {
             if (_animator == null)
@@ -748,6 +909,7 @@ namespace RoguePulse
                 planarSpeed = 0f;
             }
             Vector2 localMove = GetAnimatorLocalMoveInput(planarSpeed);
+            Vector2 directionalMove = ResolveAnimatorDirectionalInput(localMove);
             float animatorSpeedValue = ResolveAnimatorSpeedValue(planarSpeed);
 
             if (_hasSpeed)
@@ -757,12 +919,22 @@ namespace RoguePulse
 
             if (_hasMoveX)
             {
-                _animator.SetFloat(MoveXHash, localMove.x, animatorDampTime, Time.deltaTime);
+                _animator.SetFloat(MoveXHash, directionalMove.x, animatorDampTime, Time.deltaTime);
             }
 
             if (_hasMoveY)
             {
-                _animator.SetFloat(MoveYHash, localMove.y, animatorDampTime, Time.deltaTime);
+                _animator.SetFloat(MoveYHash, directionalMove.y, animatorDampTime, Time.deltaTime);
+            }
+
+            if (_hasHorizontal)
+            {
+                _animator.SetFloat(HorizontalHash, directionalMove.x, animatorDampTime, Time.deltaTime);
+            }
+
+            if (_hasVertical)
+            {
+                _animator.SetFloat(VerticalHash, directionalMove.y, animatorDampTime, Time.deltaTime);
             }
 
             if (_hasVerticalSpeed)
@@ -770,14 +942,23 @@ namespace RoguePulse
                 _animator.SetFloat(VerticalSpeedHash, _verticalVelocity, 0.04f, Time.deltaTime);
             }
 
+            bool hasMovement = planarSpeed > animatorSpeedDeadZone || _moveInput.sqrMagnitude > 0.0001f;
+            if (_hasMoving)
+            {
+                _animator.SetBool(MovingHash, hasMovement);
+            }
+
+            float runThreshold = Mathf.Max(0.5f, moveSpeed * Mathf.Max(0.6f, _stats.MoveSpeedMultiplier) * 0.8f);
+            bool runningParam = IsSprinting || (hasMovement && planarSpeed > runThreshold);
+
             if (_hasRunning)
             {
-                _animator.SetBool(RunningHash, IsSprinting);
+                _animator.SetBool(RunningHash, runningParam);
             }
 
             if (_hasIsRunning)
             {
-                _animator.SetBool(IsRunningHash, IsSprinting);
+                _animator.SetBool(IsRunningHash, runningParam);
             }
 
             if (_hasGrounded)
@@ -800,6 +981,31 @@ namespace RoguePulse
                 _animator.SetBool(IsCrouchingHash, IsCrouching);
             }
 
+            if (_hasCrouched)
+            {
+                _animator.SetBool(CrouchedHash, IsCrouching);
+            }
+
+            if (_hasJumpingBool)
+            {
+                _animator.SetBool(JumpingBoolHash, !IsGrounded);
+            }
+
+            if (_hasFireMode)
+            {
+                _animator.SetBool(FireModeHash, InputCompat.GetMouseButton(0) || InputCompat.GetMouseButton(1));
+            }
+
+            if (_hasItemEquiped)
+            {
+                _animator.SetBool(ItemEquipedHash, soldierWeapon != SoldierWeaponType.None);
+            }
+
+            if (_hasItemsWieldingIdentifier)
+            {
+                _animator.SetInteger(ItemsWieldingIdentifierHash, ResolveJUTPSWieldingIdentifier());
+            }
+
             if (_jumpTriggeredThisFrame && _hasJump)
             {
                 if (_useSoldierTriggerAnimator)
@@ -815,7 +1021,7 @@ namespace RoguePulse
                 _animator.SetTrigger(LandHash);
             }
 
-            if (enableTalkEmote && _hasTalk && Input.GetKeyDown(talkEmoteKey))
+            if (enableTalkEmote && _hasTalk && InputCompat.GetKeyDown(talkEmoteKey))
             {
                 _animator.SetTrigger(TalkHash);
             }
@@ -851,13 +1057,25 @@ namespace RoguePulse
             _hasSpeed = HasParameter(SpeedHash, AnimatorControllerParameterType.Float);
             _hasMoveX = HasParameter(MoveXHash, AnimatorControllerParameterType.Float);
             _hasMoveY = HasParameter(MoveYHash, AnimatorControllerParameterType.Float);
+            _hasHorizontal = HasParameter(HorizontalHash, AnimatorControllerParameterType.Float);
+            _hasVertical = HasParameter(VerticalHash, AnimatorControllerParameterType.Float);
             _hasVerticalSpeed = HasParameter(VerticalSpeedHash, AnimatorControllerParameterType.Float);
+            _hasMoving = HasParameter(MovingHash, AnimatorControllerParameterType.Bool);
             _hasRunning = HasParameter(RunningHash, AnimatorControllerParameterType.Bool);
             _hasIsRunning = HasParameter(IsRunningHash, AnimatorControllerParameterType.Bool);
             _hasGrounded = HasParameter(GroundedHash, AnimatorControllerParameterType.Bool);
             _hasIsGrounded = HasParameter(IsGroundedHash, AnimatorControllerParameterType.Bool);
             _hasCrouching = HasParameter(CrouchingHash, AnimatorControllerParameterType.Bool);
             _hasIsCrouching = HasParameter(IsCrouchingHash, AnimatorControllerParameterType.Bool);
+            _hasCrouched = HasParameter(CrouchedHash, AnimatorControllerParameterType.Bool);
+            _hasJumpingBool = HasParameter(JumpingBoolHash, AnimatorControllerParameterType.Bool);
+            _hasFireMode = HasParameter(FireModeHash, AnimatorControllerParameterType.Bool);
+            _hasItemEquiped = HasParameter(ItemEquipedHash, AnimatorControllerParameterType.Bool);
+            _hasItemsWieldingIdentifier = HasParameter(ItemsWieldingIdentifierHash, AnimatorControllerParameterType.Int);
+            _hasJUTPSPunch = HasParameter(JUTPSPunchHash, AnimatorControllerParameterType.Trigger);
+            _hasJUTPSTwoHandMeleeAttack = HasParameter(JUTPSTwoHandMeleeAttackHash, AnimatorControllerParameterType.Trigger);
+            _hasJUTPSOneHandMeleeAttack = HasParameter(JUTPSOneHandMeleeAttackHash, AnimatorControllerParameterType.Trigger);
+            _hasJUTPSDualHandMeleeAttack = HasParameter(JUTPSDualHandMeleeAttackHash, AnimatorControllerParameterType.Trigger);
             _hasJump = HasParameter(JumpHash, AnimatorControllerParameterType.Trigger);
             _hasLand = HasParameter(LandHash, AnimatorControllerParameterType.Trigger);
             _hasTalk = HasParameter(TalkHash, AnimatorControllerParameterType.Trigger);
@@ -903,6 +1121,21 @@ namespace RoguePulse
                                          _hasArcherStrafeShootingR ||
                                          _hasArcherShootUp ||
                                          _hasArcherShootDown);
+
+            bool nameLooksLikeJUTPS = _animator.runtimeAnimatorController != null &&
+                                      _animator.runtimeAnimatorController.name.IndexOf("animatortps", System.StringComparison.OrdinalIgnoreCase) >= 0;
+            _usesJUTPSAnimator = _hasHorizontal &&
+                                 _hasVertical &&
+                                 _hasMoving &&
+                                 _hasCrouched &&
+                                 (_hasJUTPSTwoHandMeleeAttack || _hasJUTPSOneHandMeleeAttack || _hasJUTPSDualHandMeleeAttack || _hasJUTPSPunch) &&
+                                 (nameLooksLikeJUTPS || _hasJumpingBool);
+
+            if (_usesJUTPSAnimator)
+            {
+                _useSoldierTriggerAnimator = false;
+                _useArcherTriggerAnimator = false;
+            }
         }
 
         private bool HasParameter(int hash, AnimatorControllerParameterType type)
@@ -924,6 +1157,21 @@ namespace RoguePulse
             return false;
         }
 
+        private int ResolveJUTPSWieldingIdentifier()
+        {
+            switch (soldierWeapon)
+            {
+                case SoldierWeaponType.None:
+                    return 0;
+                case SoldierWeaponType.Gun:
+                    return 1;
+                case SoldierWeaponType.DualGun:
+                    return 3;
+                default:
+                    return 2;
+            }
+        }
+
         private void TryApplyCustomLocomotionOverrides()
         {
             if (!useCustomLocomotionOverrides || _animator == null)
@@ -935,6 +1183,14 @@ namespace RoguePulse
 
             RuntimeAnimatorController runtimeController = _animator.runtimeAnimatorController;
             if (runtimeController == null)
+            {
+                return;
+            }
+
+            // AnimatorTPS already carries its own JU TPS motions; skip legacy custom override flow.
+            if (HasParameter(HorizontalHash, AnimatorControllerParameterType.Float) &&
+                HasParameter(VerticalHash, AnimatorControllerParameterType.Float) &&
+                HasParameter(MovingHash, AnimatorControllerParameterType.Bool))
             {
                 return;
             }
@@ -1074,14 +1330,25 @@ namespace RoguePulse
                 shootClip = _preferDualBladeAttackOverrides ? rangedShootClip : dualComboAttackClip;
             }
 
-            RuntimeAnimatorController baseController = runtimeController;
+            // 鈹€鈹€ Reuse existing AnimatorOverrideController when possible 鈹€鈹€
+            // Creating a new AnimatorOverrideController and assigning it to
+            // _animator.runtimeAnimatorController resets the animator state machine,
+            // which causes weapon-switch triggers (DualGun, Gun, etc.) to be lost.
+            // By reusing the existing one, ApplyOverrides() swaps clips in-place
+            // without resetting the state machine.
             AnimatorOverrideController existingOverride = runtimeController as AnimatorOverrideController;
-            if (existingOverride != null && existingOverride.runtimeAnimatorController != null)
+            bool reusingExistingOverride = existingOverride != null;
+
+            AnimatorOverrideController overrideController;
+            if (reusingExistingOverride)
             {
-                baseController = existingOverride.runtimeAnimatorController;
+                overrideController = existingOverride;
+            }
+            else
+            {
+                overrideController = new AnimatorOverrideController(runtimeController);
             }
 
-            AnimatorOverrideController overrideController = new AnimatorOverrideController(baseController);
             var overrides = new List<KeyValuePair<AnimationClip, AnimationClip>>(overrideController.overridesCount);
             overrideController.GetOverrides(overrides);
 
@@ -1223,13 +1490,25 @@ namespace RoguePulse
 
             if (replacedCount <= 0)
             {
-                Debug.LogWarning("[PlayerController] Custom clips loaded, but no matching states were found to override.", this);
+                if (!reusingExistingOverride)
+                {
+                    Debug.LogWarning("[PlayerController] Custom clips loaded, but no matching states were found to override.", this);
+                }
+
                 return;
             }
 
             overrideController.ApplyOverrides(overrides);
-            _animator.runtimeAnimatorController = overrideController;
-            Debug.Log($"[PlayerController] Applied {replacedCount} custom clip overrides from {customClips.Length} custom clips.", this);
+
+            if (!reusingExistingOverride)
+            {
+                // First-time assignment 鈥?this resets the animator state machine,
+                // so we must re-fire the weapon trigger afterward.
+                _animator.runtimeAnimatorController = overrideController;
+                _lastTriggeredSoldierWeapon = (SoldierWeaponType)(-1);
+                FireSoldierWeaponTrigger(true);
+            }
+            // When reusing, ApplyOverrides() swaps clips in-place; no state reset.
         }
 
         private AnimationClip[] LoadAllCustomClipsFromResources()
@@ -1763,7 +2042,7 @@ namespace RoguePulse
 
             bool hasMovement = planarSpeed >= movingShootSpeedThreshold;
 
-            // Note: The HumanM@ArcherController is trigger-only — there is no locomotion
+            // Note: The HumanM@ArcherController is trigger-only 鈥?there is no locomotion
             // blend tree (Speed / MoveX / MoveY). The running animation is baked INTO the
             // shooting clips (ShootRunning, StrafeShooting, etc.).  If we block those
             // triggers we lose all visible movement animation.
@@ -1914,6 +2193,22 @@ namespace RoguePulse
             }
 
             return Vector2.ClampMagnitude(_animLocalMoveSmoothed, 1f);
+        }
+
+        private Vector2 ResolveAnimatorDirectionalInput(Vector2 localMove)
+        {
+            if (!_usesJUTPSAnimator)
+            {
+                return localMove;
+            }
+
+            if (_moveInput.sqrMagnitude > 0.0001f)
+            {
+                // JUTPS locomotion blend trees are authored for direct input-space X/Y.
+                return Vector2.ClampMagnitude(_moveInput, 1f);
+            }
+
+            return localMove;
         }
 
         private float GetCurrentReferencePlanarSpeed()
@@ -2662,6 +2957,87 @@ namespace RoguePulse
             visualFeetClearance = Mathf.Clamp(visualFeetClearance, 0f, 0.2f);
             startGroundSnapFrames = Mathf.Clamp(startGroundSnapFrames, 1, 30);
             sceneGroundColliderSyncRadius = Mathf.Max(20f, sceneGroundColliderSyncRadius);
+            sceneGroundColliderSyncInterval = Mathf.Max(0.1f, sceneGroundColliderSyncInterval);
+            voidRecoveryDropThreshold = Mathf.Max(0.5f, voidRecoveryDropThreshold);
+            voidRecoveryCooldown = Mathf.Max(0.1f, voidRecoveryCooldown);
+            voidRecoveryLift = Mathf.Max(0f, voidRecoveryLift);
+        }
+
+        private void TickSceneGroundColliderSync()
+        {
+            if (!autoSyncSceneGroundColliders || Time.time < _nextSceneGroundColliderSyncTime)
+            {
+                return;
+            }
+
+            _nextSceneGroundColliderSyncTime = Time.time + sceneGroundColliderSyncInterval;
+            TrySyncSceneGroundColliders();
+        }
+
+        private void CacheSafeGroundedPosition()
+        {
+            if (_cc == null)
+            {
+                return;
+            }
+
+            float feetLocalY = _cc.center.y - _cc.height * 0.5f;
+            Vector3 current = transform.position;
+
+            if (TryGetGroundHeight(current, out float groundY))
+            {
+                current.y = groundY - feetLocalY + feetGroundClearance;
+            }
+
+            _lastSafeGroundedPosition = current;
+            _hasSafeGroundedPosition = true;
+        }
+
+        private bool TryRecoverFromVoid()
+        {
+            if (!enableVoidRecovery || _cc == null || Time.time < _nextVoidRecoveryAllowedTime)
+            {
+                return false;
+            }
+
+            Vector3 pos = transform.position;
+            bool belowAbsolute = pos.y < absoluteVoidY;
+            bool belowSafeDrop = _hasSafeGroundedPosition &&
+                                 pos.y < _lastSafeGroundedPosition.y - voidRecoveryDropThreshold;
+            if (!belowAbsolute && !belowSafeDrop)
+            {
+                return false;
+            }
+
+            Vector3 recoverPos = _hasSafeGroundedPosition ? _lastSafeGroundedPosition : pos;
+            if (!TryGetGroundHeight(recoverPos, out float groundY))
+            {
+                if (!TryGetGroundHeight(pos, out groundY))
+                {
+                    if (!_hasSafeGroundedPosition)
+                    {
+                        return false;
+                    }
+
+                    groundY = _lastSafeGroundedPosition.y;
+                }
+            }
+
+            float feetLocalY = _cc.center.y - _cc.height * 0.5f;
+            recoverPos.y = groundY - feetLocalY + feetGroundClearance + voidRecoveryLift;
+            transform.position = recoverPos;
+
+            _planarVelocity = Vector3.zero;
+            _verticalVelocity = 0f;
+            _jumpTriggeredThisFrame = false;
+            _landedThisFrame = false;
+            _nextVoidRecoveryAllowedTime = Time.time + voidRecoveryCooldown;
+
+            SnapControllerToGround();
+            LiftVisualAboveGround();
+            IsGrounded = _cc.isGrounded || ProbeGrounded();
+            CacheSafeGroundedPosition();
+            return true;
         }
 
         private System.Collections.IEnumerator SnapToGroundAtStartRoutine()

@@ -85,12 +85,22 @@ namespace RoguePulse
         private Vector3 _lastStuckCheckPos;
         private Vector3 _avoidDirection;
         private Vector3 _stuckNudgeDirection;
+        private float _nextGroundCorrection;
+        private const float GroundCorrectionInterval = 0.10f;
+        private const float GroundSinkCorrectionThreshold = 0.04f;
+        private const float GroundFloatCorrectionThreshold = 0.20f;
+        private const float GroundCorrectionMaxSnapDistance = 0.8f;
+        private const float MinGroundNormalY = 0.35f;
+        private const float MinGroundNormalFallbackY = 0.1f;
+        private int _spawnGraceFrames;
 
         public EnemyArchetype Archetype => archetype;
         public float AttackDamage => attackDamage;
+        public bool IsAirborneMode => isAirborne;
 
         private static readonly int ColorPropID = Shader.PropertyToID("_Color");
         private MaterialPropertyBlock _mpb;
+        private bool _runtimeColorTintEnabled = true;
 
         private void Awake()
         {
@@ -98,10 +108,11 @@ namespace RoguePulse
             _animController = GetComponent<EnemyAnimationController>();
             _cc = GetComponent<CharacterController>();
             EnsureCharacterControllerShape();
-            _animController?.ConfigureGroundLock(enabled: true, clearance: 0f);
+            _animController?.ConfigureGroundLock(enabled: false, clearance: 0f);
             _lastStuckCheckPos = transform.position;
             _nextTargetRefresh = 0f;
             _nextStuckCheck = 0f;
+            _spawnGraceFrames = 8;
 
             if (!isAirborne)
             {
@@ -176,18 +187,30 @@ namespace RoguePulse
             Renderer renderer = GetComponentInChildren<Renderer>();
             if (renderer != null)
             {
-                Color tint = archetype == EnemyArchetype.Ranged
-                    ? new Color(0.35f, 0.62f, 0.96f)
-                    : new Color(0.92f, 0.45f, 0.38f);
                 if (_mpb == null)
                 {
                     _mpb = new MaterialPropertyBlock();
                 }
 
                 renderer.GetPropertyBlock(_mpb);
-                _mpb.SetColor(ColorPropID, Color.Lerp(Color.white, tint, 0.55f));
+                if (_runtimeColorTintEnabled)
+                {
+                    Color tint = archetype == EnemyArchetype.Ranged
+                        ? new Color(0.35f, 0.62f, 0.96f)
+                        : new Color(0.92f, 0.45f, 0.38f);
+                    _mpb.SetColor(ColorPropID, Color.Lerp(Color.white, tint, 0.55f));
+                }
+                else
+                {
+                    _mpb.Clear();
+                }
                 renderer.SetPropertyBlock(_mpb);
             }
+        }
+
+        public void SetRuntimeColorTintEnabled(bool enabled)
+        {
+            _runtimeColorTintEnabled = enabled;
         }
 
         public void SetAirborneMode(bool enabled, float desiredHoverHeight, float desiredVerticalFollowSpeed)
@@ -245,6 +268,7 @@ namespace RoguePulse
             feetGroundClearance = Mathf.Clamp(feetClearance, 0f, 0.2f);
 
             EnsureCharacterControllerShape();
+            _spawnGraceFrames = Mathf.Max(_spawnGraceFrames, 6);
             if (!isAirborne)
             {
                 SnapControllerToGround();
@@ -300,8 +324,18 @@ namespace RoguePulse
                 return;
             }
 
+            // During spawn grace period, force snap to ground every frame
+            // to counteract CC shape changes from SpawnDirector setup
+            if (_spawnGraceFrames > 0)
+            {
+                _spawnGraceFrames--;
+                SnapControllerToGround();
+                _vertSpeed = groundedStickVelocity;
+                return;
+            }
+
             bool grounded = _cc.isGrounded || ProbeGrounded();
-            if (grounded && _vertSpeed < groundedStickVelocity)
+            if (grounded)
             {
                 _vertSpeed = groundedStickVelocity;
             }
@@ -315,10 +349,12 @@ namespace RoguePulse
             _cc.Move(velocity * Time.deltaTime);
 
             grounded = _cc.isGrounded || ProbeGrounded();
-            if (grounded && _vertSpeed < groundedStickVelocity)
+            if (grounded)
             {
                 _vertSpeed = groundedStickVelocity;
             }
+
+            PeriodicGroundCorrection();
         }
 
         private bool ProbeGrounded()
@@ -351,13 +387,12 @@ namespace RoguePulse
 
             for (int i = 0; i < hitCount; i++)
             {
-                Transform hitTransform = _groundHits[i].transform;
-                if (hitTransform == null)
+                if (!IsValidGroundHit(_groundHits[i]))
                 {
                     continue;
                 }
 
-                if (hitTransform == transform || hitTransform.IsChildOf(transform))
+                if (_groundHits[i].normal.y < MinGroundNormalFallbackY)
                 {
                     continue;
                 }
@@ -809,10 +844,58 @@ namespace RoguePulse
             }
 
             float feetLocalY = _cc.center.y - _cc.height * 0.5f;
+
+            // Disable CC temporarily so direct position write takes effect
+            bool ccWasEnabled = _cc.enabled;
+            _cc.enabled = false;
+
             Vector3 pos = transform.position;
             pos.y = groundY - feetLocalY + feetGroundClearance;
             transform.position = pos;
+
+            _cc.enabled = ccWasEnabled;
             _vertSpeed = 0f;
+        }
+
+        private void PeriodicGroundCorrection()
+        {
+            if (_cc == null || Time.time < _nextGroundCorrection)
+            {
+                return;
+            }
+
+            _nextGroundCorrection = Time.time + GroundCorrectionInterval;
+
+            if (!TryGetGroundHeight(transform.position, out float groundY))
+            {
+                return;
+            }
+
+            float feetWorldY = transform.position.y + _cc.center.y - _cc.height * 0.5f;
+            float deltaToGround = groundY - feetWorldY;
+            bool tooLow = deltaToGround > GroundSinkCorrectionThreshold;
+            bool tooHigh = deltaToGround < -GroundFloatCorrectionThreshold;
+            if (!tooLow && !tooHigh)
+            {
+                return;
+            }
+
+            if (Mathf.Abs(deltaToGround) > GroundCorrectionMaxSnapDistance)
+            {
+                return;
+            }
+
+            float feetLocalY = _cc.center.y - _cc.height * 0.5f;
+
+            bool ccWasEnabled = _cc.enabled;
+            _cc.enabled = false;
+
+            Vector3 pos = transform.position;
+            pos.y = groundY - feetLocalY + feetGroundClearance;
+            transform.position = pos;
+
+            _cc.enabled = ccWasEnabled;
+            _vertSpeed = groundedStickVelocity;
         }
 
         private bool TryGetGroundHeight(Vector3 referencePos, out float groundY)
@@ -835,34 +918,76 @@ namespace RoguePulse
 
             float nearestDistance = float.MaxValue;
             float nearestY = 0f;
+            float nearestFallbackDistance = float.MaxValue;
+            float nearestFallbackY = 0f;
             for (int i = 0; i < hitCount; i++)
             {
-                Transform hitTransform = _groundHits[i].transform;
-                if (hitTransform == null)
+                RaycastHit hit = _groundHits[i];
+                if (!IsValidGroundHit(hit))
                 {
                     continue;
                 }
 
-                if (hitTransform == transform || hitTransform.IsChildOf(transform))
+                if (hit.normal.y >= MinGroundNormalY)
                 {
-                    continue;
+                    float d = hit.distance;
+                    if (d < nearestDistance)
+                    {
+                        nearestDistance = d;
+                        nearestY = hit.point.y;
+                    }
                 }
 
-                float d = _groundHits[i].distance;
-                if (d < nearestDistance)
+                if (hit.normal.y >= MinGroundNormalFallbackY)
                 {
-                    nearestDistance = d;
-                    nearestY = _groundHits[i].point.y;
+                    float d = hit.distance;
+                    if (d < nearestFallbackDistance)
+                    {
+                        nearestFallbackDistance = d;
+                        nearestFallbackY = hit.point.y;
+                    }
                 }
             }
 
-            if (nearestDistance == float.MaxValue)
+            if (nearestDistance != float.MaxValue)
             {
-                groundY = 0f;
+                groundY = nearestY;
+                return true;
+            }
+
+            if (nearestFallbackDistance != float.MaxValue)
+            {
+                groundY = nearestFallbackY;
+                return true;
+            }
+
+            groundY = 0f;
+            return false;
+        }
+
+        private bool IsValidGroundHit(RaycastHit hit)
+        {
+            Transform hitTransform = hit.transform;
+            if (hitTransform == null)
+            {
                 return false;
             }
 
-            groundY = nearestY;
+            if (hitTransform == transform || hitTransform.IsChildOf(transform))
+            {
+                return false;
+            }
+
+            if (hitTransform.GetComponentInParent<EnemyController>() != null)
+            {
+                return false;
+            }
+
+            if (hitTransform.GetComponentInParent<PlayerController>() != null)
+            {
+                return false;
+            }
+
             return true;
         }
 

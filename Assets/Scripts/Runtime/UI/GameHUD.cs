@@ -36,6 +36,12 @@ namespace RoguePulse
         private RunBuildManager _buildManager;
         private MetaProgressionManager _metaProgressionManager;
         private float _alertHideAt;
+        private Image _hpFillTarget;
+        private RectTransform _hpFillRect;
+        private float _hpFillBaseWidth;
+        private float _hpFillBaseAnchorMinX;
+        private float _hpFillBaseAnchorMaxX;
+        private bool _hpFillUsesStretchAnchors;
 
         private void Awake()
         {
@@ -47,6 +53,7 @@ namespace RoguePulse
 
             Instance = this;
             SetInteractionPrompt(string.Empty);
+            ConfigureHpFillTarget();
             if (teleporterFill != null) teleporterFill.fillAmount = 0f;
             if (alertText != null) alertText.enabled = false;
             if (winPanel != null) winPanel.SetActive(false);
@@ -220,15 +227,89 @@ namespace RoguePulse
 
         private void HandleHp(Damageable _, float current, float max)
         {
-            if (hpFill != null)
-            {
-                hpFill.fillAmount = max <= 0f ? 0f : Mathf.Clamp01(current / max);
-            }
+            float ratio = max <= 0f ? 0f : Mathf.Clamp01(current / max);
+            ApplyHpRatio(ratio);
 
             if (hpText != null)
             {
                 hpText.text = $"HP: {Mathf.CeilToInt(current)}/{Mathf.CeilToInt(max)}";
             }
+        }
+
+        private void ConfigureHpFillTarget()
+        {
+            _hpFillTarget = hpFill;
+            if (_hpFillTarget == null)
+            {
+                _hpFillRect = null;
+                _hpFillBaseWidth = 0f;
+                _hpFillBaseAnchorMinX = 0f;
+                _hpFillBaseAnchorMaxX = 0f;
+                _hpFillUsesStretchAnchors = false;
+                return;
+            }
+
+            // If hpFill points to a bar root/background, prefer its "Fill" child image.
+            Transform fillChild = _hpFillTarget.transform.Find("Fill");
+            if (fillChild != null)
+            {
+                Image childImage = fillChild.GetComponent<Image>();
+                if (childImage != null)
+                {
+                    _hpFillTarget = childImage;
+                }
+            }
+
+            _hpFillRect = _hpFillTarget.rectTransform;
+            if (_hpFillRect == null)
+            {
+                _hpFillBaseWidth = 0f;
+                _hpFillBaseAnchorMinX = 0f;
+                _hpFillBaseAnchorMaxX = 0f;
+                _hpFillUsesStretchAnchors = false;
+                return;
+            }
+
+            _hpFillBaseWidth = Mathf.Max(0f, _hpFillRect.sizeDelta.x);
+            _hpFillBaseAnchorMinX = _hpFillRect.anchorMin.x;
+            _hpFillBaseAnchorMaxX = _hpFillRect.anchorMax.x;
+            _hpFillUsesStretchAnchors = !Mathf.Approximately(_hpFillBaseAnchorMinX, _hpFillBaseAnchorMaxX);
+        }
+
+        private void ApplyHpRatio(float ratio)
+        {
+            if (_hpFillTarget == null)
+            {
+                ConfigureHpFillTarget();
+            }
+
+            if (_hpFillTarget == null)
+            {
+                return;
+            }
+
+            if (_hpFillTarget.type == Image.Type.Filled)
+            {
+                _hpFillTarget.fillAmount = ratio;
+                return;
+            }
+
+            if (_hpFillRect == null)
+            {
+                return;
+            }
+
+            if (_hpFillUsesStretchAnchors)
+            {
+                Vector2 anchorMax = _hpFillRect.anchorMax;
+                anchorMax.x = Mathf.Lerp(_hpFillBaseAnchorMinX, _hpFillBaseAnchorMaxX, ratio);
+                _hpFillRect.anchorMax = anchorMax;
+                return;
+            }
+
+            Vector2 sizeDelta = _hpFillRect.sizeDelta;
+            sizeDelta.x = _hpFillBaseWidth * ratio;
+            _hpFillRect.sizeDelta = sizeDelta;
         }
 
         private void HandleTeleporterProgress(float p)

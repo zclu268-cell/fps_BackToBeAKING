@@ -77,7 +77,7 @@ namespace RoguePulse
 
         private void TickMovement()
         {
-            Vector2 input = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+            Vector2 input = new Vector2(InputCompat.GetAxisRaw("Horizontal"), InputCompat.GetAxisRaw("Vertical"));
             if (input.sqrMagnitude > 1f)
             {
                 input.Normalize();
@@ -92,7 +92,7 @@ namespace RoguePulse
 
             _planarMoveDirection = forward * input.y + right * input.x;
 
-            bool sprintHeld = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+            bool sprintHeld = InputCompat.GetKey(KeyCode.LeftShift) || InputCompat.GetKey(KeyCode.RightShift);
             float currentSpeed = sprintHeld ? sprintSpeed : moveSpeed;
 
             if (_controller.isGrounded)
@@ -102,7 +102,7 @@ namespace RoguePulse
                     _verticalVelocity = groundedStickVelocity;
                 }
 
-                if (Input.GetKeyDown(KeyCode.Space))
+                if (InputCompat.GetKeyDown(KeyCode.Space))
                 {
                     _verticalVelocity = Mathf.Sqrt(jumpHeight * -2f * gravity);
                 }

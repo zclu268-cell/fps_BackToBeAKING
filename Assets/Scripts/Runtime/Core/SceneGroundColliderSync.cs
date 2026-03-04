@@ -21,6 +21,9 @@ namespace RoguePulse
         {
             "ground",
             "floor",
+            "stone",
+            "rock",
+            "cliff",
             "road",
             "street",
             "terrain",
@@ -33,8 +36,10 @@ namespace RoguePulse
             "sidewalk",
             "path",
             "land",
-            "cliff",
-            "rock"
+            "island",
+            "mesa",
+            "plateau",
+            "lava"
         };
 
         public static bool EnsureForActiveScene(Vector3 focusPoint, float maxHorizontalDistance)
@@ -133,13 +138,22 @@ namespace RoguePulse
                     continue;
                 }
 
-                if (!LooksWalkable(go.name, renderer.bounds))
+                if (!LooksWalkable(go.name, renderer.bounds, go.isStatic))
                 {
                     continue;
                 }
 
-                if (go.GetComponent<Collider>() != null)
+                Collider existingCollider = go.GetComponent<Collider>();
+                if (existingCollider != null)
                 {
+                    // Repair disabled/trigger-only colliders on likely walkable meshes.
+                    if (!existingCollider.enabled || existingCollider.isTrigger)
+                    {
+                        existingCollider.enabled = true;
+                        existingCollider.isTrigger = false;
+                        added++;
+                    }
+
                     continue;
                 }
 
@@ -152,7 +166,7 @@ namespace RoguePulse
             return added;
         }
 
-        private static bool LooksWalkable(string objectName, Bounds bounds)
+        private static bool LooksWalkable(string objectName, Bounds bounds, bool isStaticLike)
         {
             string lowerName = string.IsNullOrEmpty(objectName) ? string.Empty : objectName.ToLowerInvariant();
             for (int i = 0; i < WalkableNameHints.Length; i++)
@@ -165,7 +179,9 @@ namespace RoguePulse
 
             Vector3 size = bounds.size;
             bool isLargeAndMostlyFlat = size.x >= 8f && size.z >= 8f && size.y <= 6f;
-            return isLargeAndMostlyFlat;
+            bool isMediumStaticSurface = isStaticLike && size.x >= 3f && size.z >= 3f && size.y <= 12f;
+            bool isHugeSurface = size.x >= 14f && size.z >= 14f && size.y <= 20f;
+            return isLargeAndMostlyFlat || isMediumStaticSurface || isHugeSurface;
         }
 
         private static bool IsWithinHorizontalDistance(Vector3 position, Vector3 focusPoint, float maxHorizontalDistanceSqr)

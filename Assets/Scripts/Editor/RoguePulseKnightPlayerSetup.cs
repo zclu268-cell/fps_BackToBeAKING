@@ -558,6 +558,16 @@ namespace RoguePulse.Editor
 
         private static RuntimeAnimatorController ResolveBestAvailablePlayerController()
         {
+            // Prefer JU TPS controller when available – it has full weapon animation layers.
+            const string juTPSControllerPath =
+                "Assets/Julhiecio TPS Controller/Animations/Animator/AnimatorTPS Controller.controller";
+            RuntimeAnimatorController juTPSController =
+                AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(juTPSControllerPath);
+            if (juTPSController != null)
+            {
+                return juTPSController;
+            }
+
             RuntimeAnimatorController fullPlayerController =
                 RoguePulseHumanBasicArcherSetup.EnsureAnimatorController(forceRebuild: false);
             if (fullPlayerController != null)

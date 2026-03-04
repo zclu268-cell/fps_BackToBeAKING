@@ -47,10 +47,10 @@ namespace RoguePulse
         [Header("Mount")]
         [SerializeField] private Transform weaponAnchor;
         [SerializeField] private bool attachAnchorToRightHand = true;
-        [SerializeField] private Vector3 rightHandAnchorOffset = new Vector3(0.03f, -0.02f, 0.06f);
-        [SerializeField] private Vector3 rightHandAnchorEuler = new Vector3(-10f, 90f, 0f);
-        [SerializeField] private Vector3 leftHandAnchorOffset = new Vector3(-0.03f, -0.02f, 0.06f);
-        [SerializeField] private Vector3 leftHandAnchorEuler = new Vector3(-10f, -90f, 0f);
+        [SerializeField] private Vector3 rightHandAnchorOffset = new Vector3(0.055f, -0.012f, 0.005f);
+        [SerializeField] private Vector3 rightHandAnchorEuler = new Vector3(-2f, 90f, 0f);
+        [SerializeField] private Vector3 leftHandAnchorOffset = new Vector3(0.055f, -0.012f, -0.005f);
+        [SerializeField] private Vector3 leftHandAnchorEuler = new Vector3(-2f, -90f, 0f);
 
         [Header("Loadout")]
         [SerializeField, Min(0)] private int defaultWeaponIndex;
@@ -85,20 +85,20 @@ namespace RoguePulse
 
             for (int i = 0; i < weaponSlots.Length; i++)
             {
-                if (Input.GetKeyDown(weaponSlots[i].hotkey))
+                if (InputCompat.GetKeyDown(weaponSlots[i].hotkey))
                 {
                     EquipWeapon(i);
                     return;
                 }
             }
 
-            if (Input.GetKeyDown(nextWeaponKey))
+            if (InputCompat.GetKeyDown(nextWeaponKey))
             {
                 StepWeapon(1);
                 return;
             }
 
-            if (Input.GetKeyDown(previousWeaponKey))
+            if (InputCompat.GetKeyDown(previousWeaponKey))
             {
                 StepWeapon(-1);
                 return;
@@ -109,7 +109,7 @@ namespace RoguePulse
                 return;
             }
 
-            float wheel = Input.mouseScrollDelta.y;
+            float wheel = InputCompat.GetMouseScrollDeltaY();
             if (wheel > 0.01f)
             {
                 StepWeapon(1);
@@ -144,8 +144,8 @@ namespace RoguePulse
                     displayName = "P226",
                     hotkey = KeyCode.Alpha1,
                     resourceModelPath = "JUTPSWeapons/Guns/P226/Model/P226 PISTOLA",
-                    localPosition = new Vector3(0.015f, -0.01f, 0.025f),
-                    localEulerAngles = new Vector3(2f, 2f, -90f),
+                    localPosition = new Vector3(0f, 0f, 0f),
+                    localEulerAngles = new Vector3(0f, 0f, -90f),
                     localScale = Vector3.one,
                     muzzleLocalPosition = new Vector3(0f, 0.01f, 0.22f),
                     shootCooldown = 0.22f,
@@ -158,8 +158,8 @@ namespace RoguePulse
                     displayName = "UMP",
                     hotkey = KeyCode.Alpha2,
                     resourceModelPath = "JUTPSWeapons/Guns/UMP/UMP5",
-                    localPosition = new Vector3(0.02f, -0.03f, 0.03f),
-                    localEulerAngles = new Vector3(4f, 0f, -90f),
+                    localPosition = new Vector3(0f, -0.01f, 0f),
+                    localEulerAngles = new Vector3(0f, 0f, -90f),
                     localScale = Vector3.one,
                     muzzleLocalPosition = new Vector3(0f, 0f, 0.45f),
                     shootCooldown = 0.11f,
@@ -172,7 +172,7 @@ namespace RoguePulse
                     displayName = "Sniper M82",
                     hotkey = KeyCode.Alpha3,
                     resourceModelPath = "JUTPSWeapons/Guns/Barret M82/Model/SNIPER M82",
-                    localPosition = new Vector3(0.01f, -0.02f, 0.07f),
+                    localPosition = new Vector3(0f, -0.005f, 0.02f),
                     localEulerAngles = new Vector3(0f, 0f, -90f),
                     localScale = Vector3.one,
                     muzzleLocalPosition = new Vector3(0f, 0f, 0.95f),
@@ -186,8 +186,8 @@ namespace RoguePulse
                     displayName = "Dual Katana",
                     hotkey = KeyCode.Alpha4,
                     resourceModelPath = "JUTPSWeapons/Melee/Katana/Katana",
-                    localPosition = new Vector3(0.03f, -0.03f, 0.04f),
-                    localEulerAngles = new Vector3(8f, 88f, -95f),
+                    localPosition = new Vector3(0f, 0f, 0f),
+                    localEulerAngles = new Vector3(0f, 0f, 0f),
                     localScale = Vector3.one,
                     muzzleLocalPosition = new Vector3(0f, 0f, 0.7f),
                     shootCooldown = 0.26f,
@@ -202,8 +202,8 @@ namespace RoguePulse
                     dualWield = true,
                     secondaryResourceModelPath = "JUTPSWeapons/Melee/Katana/Katana",
                     attachSecondaryToLeftHand = true,
-                    secondaryLocalPosition = new Vector3(-0.03f, -0.03f, 0.04f),
-                    secondaryLocalEulerAngles = new Vector3(8f, -88f, 95f),
+                    secondaryLocalPosition = new Vector3(0f, 0f, 0f),
+                    secondaryLocalEulerAngles = new Vector3(0f, 0f, 0f),
                     secondaryLocalScale = Vector3.one
                 }
             };
