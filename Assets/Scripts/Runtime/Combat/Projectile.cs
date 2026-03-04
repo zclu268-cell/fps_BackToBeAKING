@@ -359,8 +359,9 @@ namespace RoguePulse
             go.transform.rotation = rotation;
 
             ParticleSystem ps = go.AddComponent<ParticleSystem>();
+            // Ensure the particle is not playing before runtime parameter assignment.
+            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
             ParticleSystem.MainModule main = ps.main;
-            main.duration = 0.22f;
             main.loop = false;
             main.playOnAwake = false;
             main.simulationSpace = ParticleSystemSimulationSpace.World;

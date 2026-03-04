@@ -85,20 +85,20 @@ namespace RoguePulse
 
             for (int i = 0; i < weaponSlots.Length; i++)
             {
-                if (Input.GetKeyDown(weaponSlots[i].hotkey))
+                if (InputCompat.GetKeyDown(weaponSlots[i].hotkey))
                 {
                     EquipWeapon(i);
                     return;
                 }
             }
 
-            if (Input.GetKeyDown(nextWeaponKey))
+            if (InputCompat.GetKeyDown(nextWeaponKey))
             {
                 StepWeapon(1);
                 return;
             }
 
-            if (Input.GetKeyDown(previousWeaponKey))
+            if (InputCompat.GetKeyDown(previousWeaponKey))
             {
                 StepWeapon(-1);
                 return;
@@ -109,7 +109,7 @@ namespace RoguePulse
                 return;
             }
 
-            float wheel = Input.mouseScrollDelta.y;
+            float wheel = InputCompat.GetMouseScrollDeltaY();
             if (wheel > 0.01f)
             {
                 StepWeapon(1);

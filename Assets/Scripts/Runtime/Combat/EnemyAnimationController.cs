@@ -34,13 +34,15 @@ namespace RoguePulse
         [SerializeField] [Range(0f, 1f)] private float injuredThreshold = 0.5f;
 
         [Header("Ground Anti-Clipping")]
-        [SerializeField] private bool keepFeetAboveGround = true;
+        [SerializeField] private bool keepFeetAboveGround = false;
         [SerializeField] private float feetGroundClearance = 0.03f;
         [SerializeField] private float maxGroundCorrectionPerFrame = 0.2f;
         // 鈹€鈹€ Animator 鍙傛暟鍚嶅父閲?鈹€鈹€
         private static readonly int ParamSpeed     = Animator.StringToHash("Speed");
         private static readonly int ParamAttack    = Animator.StringToHash("Attack");
         private static readonly int ParamAttackAlt = Animator.StringToHash("Attack1");
+        private static readonly int ParamHit       = Animator.StringToHash("Hit");
+        private static readonly int ParamDamage    = Animator.StringToHash("Damage");
         private static readonly int ParamIsInjured = Animator.StringToHash("IsInjured");
         private static readonly int ParamInjured   = Animator.StringToHash("Injured");
         // 鈹€鈹€ 鍐呴儴鐘舵€?鈹€鈹€
@@ -64,11 +66,16 @@ namespace RoguePulse
         private bool  _dead;
         private float _deathAngle;
         private bool _groundAligned;
+        private Transform[] _feetBones;
+        private float _canonicalModelLocalY = float.NaN;
         private bool _hasSpeedParam;
         private bool _hasAttackTrigger;
         private bool _hasAttackAltTrigger;
+        private bool _hasHitTrigger;
+        private bool _hasDamageTrigger;
         private bool _hasIsInjuredParam;
         private bool _hasInjuredParam;
+        private float _lastObservedHp = float.MaxValue;
         // 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ 鐢熷懡鍛ㄦ湡 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
         private void Awake()
@@ -81,6 +88,10 @@ namespace RoguePulse
         private void Start()
         {
             _lastPos = transform.position;
+            if (_damageable != null)
+            {
+                _lastObservedHp = _damageable.CurrentHp;
+            }
             if (modelRoot != null)
             {
                 _baseLocalPos = modelRoot.localPosition;
@@ -92,6 +103,7 @@ namespace RoguePulse
             }
             _hasAnimator = _animator != null && _animator.runtimeAnimatorController != null;
             CacheAnimatorParameters();
+            CacheFeetBones();
             CacheMaterials();
         }
 
@@ -204,6 +216,7 @@ namespace RoguePulse
         {
             modelRoot = newRoot;
             _baseLocalPos = modelRoot != null ? modelRoot.localPosition : Vector3.zero;
+            _canonicalModelLocalY = float.NaN; // re-capture on next LateUpdate
             _animator = modelRoot != null ? modelRoot.GetComponentInChildren<Animator>(true) : null;
             if (_animator != null)
             {
@@ -211,6 +224,7 @@ namespace RoguePulse
             }
             _hasAnimator = _animator != null && _animator.runtimeAnimatorController != null;
             CacheAnimatorParameters();
+            CacheFeetBones();
             CacheMaterials();
         }
 
@@ -218,20 +232,24 @@ namespace RoguePulse
         {
             keepFeetAboveGround = enabled;
             feetGroundClearance = Mathf.Max(0f, clearance);
-            if (keepFeetAboveGround)
-            {
-                maxGroundCorrectionPerFrame = Mathf.Max(1f, maxGroundCorrectionPerFrame);
-            }
+            maxGroundCorrectionPerFrame = Mathf.Clamp(maxGroundCorrectionPerFrame, 0.005f, 0.08f);
             _groundAligned = false;
+            _canonicalModelLocalY = float.NaN; // re-capture on next LateUpdate after alignment settles
         }
 
         // 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ 浜嬩欢澶勭悊 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
         private void HandleHealthChanged(Damageable d, float current, float max)
         {
-            // 鍙楀埌浼ゅ锛圚P 鍑忓皯锛夋椂瑙﹀彂闂厜
-            if (current < max && !_dead)
+            bool tookDamage = current < _lastObservedHp - 0.0001f;
+            _lastObservedHp = current;
+
+            // 鍙楀埌浼ゅ锛圚P 鍑忓皯锛夋椂瑙﹀彂闂厜 + 受击动画
+            if (tookDamage && !_dead)
+            {
                 TriggerHitFlash();
+                TriggerHitReactionAnimation();
+            }
 
             // 鏇存柊鍙椾激鐘舵€
             if (_hasAnimator && max > 0f)
@@ -273,6 +291,16 @@ namespace RoguePulse
                 {
                     _animator.ResetTrigger(ParamAttackAlt);
                 }
+
+                if (_hasHitTrigger)
+                {
+                    _animator.ResetTrigger(ParamHit);
+                }
+
+                if (_hasDamageTrigger)
+                {
+                    _animator.ResetTrigger(ParamDamage);
+                }
             }
             // 姝讳骸鏃舵仮澶嶆潗璐紙闃叉鐧借壊鐘舵€佹浜★級
             if (_flashing) RestoreMaterials();
@@ -301,6 +329,23 @@ private void TriggerHitFlash()
             {
                 if (_renderers[i] == null) continue;
                 _renderers[i].sharedMaterials = _originalMats[i];
+            }
+        }
+
+        private void TriggerHitReactionAnimation()
+        {
+            if (!_hasAnimator)
+            {
+                return;
+            }
+
+            if (_hasHitTrigger)
+            {
+                _animator.SetTrigger(ParamHit);
+            }
+            else if (_hasDamageTrigger)
+            {
+                _animator.SetTrigger(ParamDamage);
             }
         }
 
@@ -337,6 +382,8 @@ private void CacheMaterials()
             _hasSpeedParam = false;
             _hasAttackTrigger = false;
             _hasAttackAltTrigger = false;
+            _hasHitTrigger = false;
+            _hasDamageTrigger = false;
             _hasIsInjuredParam = false;
             _hasInjuredParam = false;
 
@@ -361,6 +408,14 @@ private void CacheMaterials()
                 {
                     _hasAttackAltTrigger = true;
                 }
+                else if (parameter.type == AnimatorControllerParameterType.Trigger && parameter.nameHash == ParamHit)
+                {
+                    _hasHitTrigger = true;
+                }
+                else if (parameter.type == AnimatorControllerParameterType.Trigger && parameter.nameHash == ParamDamage)
+                {
+                    _hasDamageTrigger = true;
+                }
                 else if (parameter.type == AnimatorControllerParameterType.Bool && parameter.nameHash == ParamIsInjured)
                 {
                     _hasIsInjuredParam = true;
@@ -379,22 +434,39 @@ private void CacheMaterials()
                 return;
             }
 
-            float desiredMinY = GetBodyFeetWorldY() + feetGroundClearance;
-            if (!TryGetRenderersMinY(out float currentMinY))
+            float currentLocalY = modelRoot.localPosition.y;
+
+            // Capture the canonical (spawn-aligned) local Y on first call so we have a stable
+            // reference that isn't contaminated by animation-driven bone positions.
+            if (float.IsNaN(_canonicalModelLocalY))
             {
+                _canonicalModelLocalY = currentLocalY;
+                if (!_groundAligned)
+                {
+                    _groundAligned = true;
+                    _baseLocalPos = modelRoot.localPosition;
+                }
                 return;
             }
 
-            float offset = desiredMinY - currentMinY;
+            float delta = _canonicalModelLocalY - currentLocalY;
+            float step = Mathf.Max(0.005f, maxGroundCorrectionPerFrame);
 
-            if (Mathf.Abs(offset) > 0.0001f)
+            if (delta > 0.0001f)
             {
-                modelRoot.position += Vector3.up * offset;
+                // Model has sunk below the canonical aligned position — lift back up.
+                Vector3 lp = modelRoot.localPosition;
+                lp.y += Mathf.Min(delta, step);
+                modelRoot.localPosition = lp;
+            }
+            else if (delta < -0.0001f)
+            {
+                // Model has risen above canonical (e.g. stale drift) — bring back down.
+                Vector3 lp = modelRoot.localPosition;
+                lp.y -= Mathf.Min(-delta, step);
+                modelRoot.localPosition = lp;
             }
 
-            // After the first successful ground alignment, re-capture _baseLocalPos so the
-            // idle-sway / walk-bob system oscillates around the correct ground-level position
-            // instead of the stale prefab offset baked into the template at Y=-200.
             if (!_groundAligned)
             {
                 _groundAligned = true;
@@ -417,6 +489,72 @@ private void CacheMaterials()
             }
 
             return transform.position.y;
+        }
+
+        private void CacheFeetBones()
+        {
+            _feetBones = null;
+            if (_animator == null || !_animator.isHuman)
+            {
+                return;
+            }
+
+            var bones = new System.Collections.Generic.List<Transform>(4);
+            TryAddBone(bones, HumanBodyBones.LeftFoot);
+            TryAddBone(bones, HumanBodyBones.RightFoot);
+            TryAddBone(bones, HumanBodyBones.LeftToes);
+            TryAddBone(bones, HumanBodyBones.RightToes);
+            if (bones.Count > 0)
+            {
+                _feetBones = bones.ToArray();
+            }
+        }
+
+        private void TryAddBone(System.Collections.Generic.List<Transform> list, HumanBodyBones bone)
+        {
+            Transform t = _animator.GetBoneTransform(bone);
+            if (t != null)
+            {
+                list.Add(t);
+            }
+        }
+
+        // Prefer bone-based foot Y (stable across animation frames) over renderer bounds (noisy).
+        private bool TryGetFeetMinY(out float minY)
+        {
+            if (_feetBones != null && _feetBones.Length > 0)
+            {
+                minY = float.MaxValue;
+                for (int i = 0; i < _feetBones.Length; i++)
+                {
+                    if (_feetBones[i] != null)
+                    {
+                        minY = Mathf.Min(minY, _feetBones[i].position.y);
+                    }
+                }
+
+                return minY < float.MaxValue;
+            }
+
+            // Non-humanoid fallback: use renderer bounds with a stability bias.
+            // Apply only when the model appears to have sunk clearly below the floor
+            // to avoid the oscillation issue that prompted the original disable.
+            if (!TryGetRenderersMinY(out float rendererMinY))
+            {
+                minY = 0f;
+                return false;
+            }
+
+            float desiredMinY = GetBodyFeetWorldY() + feetGroundClearance;
+            // Only report the value as "below floor" if clearly clipping (> 2x clearance threshold).
+            if (rendererMinY < desiredMinY - Mathf.Max(0.02f, feetGroundClearance * 2f))
+            {
+                minY = rendererMinY;
+                return true;
+            }
+
+            minY = 0f;
+            return false;
         }
 
         private bool TryGetRenderersMinY(out float minY)
@@ -443,7 +581,7 @@ private void CacheMaterials()
                     continue;
                 }
 
-                if (!(renderer is MeshRenderer) && !(renderer is SkinnedMeshRenderer))
+                if (!(renderer is SkinnedMeshRenderer))
                 {
                     continue;
                 }
@@ -453,6 +591,30 @@ private void CacheMaterials()
                 {
                     found = true;
                     y = candidate;
+                }
+            }
+
+            if (!found)
+            {
+                for (int i = 0; i < renderers.Length; i++)
+                {
+                    Renderer renderer = renderers[i];
+                    if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy)
+                    {
+                        continue;
+                    }
+
+                    if (!(renderer is MeshRenderer))
+                    {
+                        continue;
+                    }
+
+                    float candidate = renderer.bounds.min.y;
+                    if (!found || candidate < y)
+                    {
+                        found = true;
+                        y = candidate;
+                    }
                 }
             }
 

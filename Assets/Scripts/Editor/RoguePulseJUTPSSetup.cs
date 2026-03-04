@@ -6,24 +6,15 @@ using UnityEngine;
 namespace RoguePulse.Editor
 {
     /// <summary>
-    /// Imports the JU TPS 3 unitypackage and applies its AnimatorTPS Controller
-    /// to the player character, enabling full weapon-specific animations.
+    /// Imports the JU TPS 3 package and binds its AnimatorTPS controller to the player.
     /// </summary>
     public static class RoguePulseJUTPSSetup
     {
-        // Path to the .unitypackage on disk.
         private const string PackagePath =
-            @"D:\unity素材\JU TPS 3 - Third Person Shooter GameKit Vehicle Physics 3.3.69.unitypackage";
+            "D:\\unity\u7d20\u6750\\JU TPS 3 - Third Person Shooter GameKit Vehicle Physics 3.3.69.unitypackage";
 
-        // Path inside the project where the JU TPS controller ends up after import.
         private const string JUTPSControllerPath =
             "Assets/Julhiecio TPS Controller/Animations/Animator/AnimatorTPS Controller.controller";
-
-        // Masks used by the JU TPS controller.
-        private const string TorsoMaskPath =
-            "Assets/Julhiecio TPS Controller/Animations/Animator/Torso.mask";
-        private const string ArmsMaskPath =
-            "Assets/Julhiecio TPS Controller/Animations/Animator/Arms.mask";
 
         [MenuItem("RoguePulse/Setup Characters/1. Import JU TPS 3 Package")]
         public static void ImportJUTPSPackage()
@@ -31,25 +22,26 @@ namespace RoguePulse.Editor
             if (!System.IO.File.Exists(PackagePath))
             {
                 Debug.LogError($"[RoguePulse] JU TPS 3 package not found: {PackagePath}");
-                EditorUtility.DisplayDialog("RoguePulse",
-                    $"找不到 JU TPS 3 包:\n{PackagePath}", "OK");
+                EditorUtility.DisplayDialog(
+                    "RoguePulse",
+                    $"JU TPS 3 package not found:\n{PackagePath}",
+                    "OK");
                 return;
             }
 
-            // Check if already imported.
             RuntimeAnimatorController existing =
                 AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(JUTPSControllerPath);
             if (existing != null)
             {
-                Debug.Log("[RoguePulse] JU TPS 3 already imported.");
-                EditorUtility.DisplayDialog("RoguePulse",
-                    "JU TPS 3 已经导入过了。\n如需重新绑定动画，请使用菜单：\nRoguePulse → Setup Characters → 2. Apply JU TPS Animations To Player",
+                Debug.Log("[RoguePulse] JU TPS 3 is already imported.");
+                EditorUtility.DisplayDialog(
+                    "RoguePulse",
+                    "JU TPS 3 is already imported.\nUse menu item 2 to re-apply animations to player.",
                     "OK");
                 return;
             }
 
             Debug.Log($"[RoguePulse] Importing JU TPS 3 package: {PackagePath}");
-            // Show import dialog so user can choose what to import.
             AssetDatabase.ImportPackage(PackagePath, true);
         }
 
@@ -60,9 +52,10 @@ namespace RoguePulse.Editor
                 AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(JUTPSControllerPath);
             if (controller == null)
             {
-                Debug.LogError($"[RoguePulse] JU TPS AnimatorTPS Controller not found. Import the package first.");
-                EditorUtility.DisplayDialog("RoguePulse",
-                    "找不到 JU TPS AnimatorTPS Controller。\n请先导入 JU TPS 3 包：\nRoguePulse → Setup Characters → 1. Import JU TPS 3 Package",
+                Debug.LogError("[RoguePulse] JU TPS AnimatorTPS controller not found. Import package first.");
+                EditorUtility.DisplayDialog(
+                    "RoguePulse",
+                    "AnimatorTPS controller was not found.\nPlease import JU TPS 3 first.",
                     "OK");
                 return;
             }
@@ -70,27 +63,27 @@ namespace RoguePulse.Editor
             GameObject playerRoot = FindTargetPlayerRoot();
             if (playerRoot == null)
             {
-                Debug.LogError("[RoguePulse] PlayerRoot not found in current scene.");
-                EditorUtility.DisplayDialog("RoguePulse",
-                    "场景中找不到 PlayerRoot。", "OK");
+                Debug.LogError("[RoguePulse] PlayerRoot (or object with PlayerController) not found.");
+                EditorUtility.DisplayDialog("RoguePulse", "PlayerRoot not found in current scene.", "OK");
                 return;
             }
 
             Animator[] animators = playerRoot.GetComponentsInChildren<Animator>(true);
             if (animators == null || animators.Length == 0)
             {
-                Debug.LogError("[RoguePulse] No Animator found under PlayerRoot.");
+                Debug.LogError("[RoguePulse] No Animator found under player root.");
+                EditorUtility.DisplayDialog("RoguePulse", "No Animator found under player root.", "OK");
                 return;
             }
 
             Animator targetAnimator = FindPrimaryAnimator(playerRoot, animators);
             if (targetAnimator == null)
             {
-                Debug.LogError("[RoguePulse] Failed to resolve target Animator.");
+                Debug.LogError("[RoguePulse] Failed to resolve primary player Animator.");
+                EditorUtility.DisplayDialog("RoguePulse", "Failed to resolve player Animator.", "OK");
                 return;
             }
 
-            // Assign the JU TPS controller to all animators on the player.
             for (int i = 0; i < animators.Length; i++)
             {
                 Animator animator = animators[i];
@@ -101,55 +94,15 @@ namespace RoguePulse.Editor
 
                 Undo.RecordObject(animator, "Assign JU TPS Controller");
                 animator.runtimeAnimatorController = controller;
+                animator.applyRootMotion = false;
                 EditorUtility.SetDirty(animator);
             }
 
-            // Remove any leftover Archer controller scripts.
             RemoveArcherControllers(playerRoot);
+            EnsureControlComponentsEnabled(playerRoot);
+            ConfigurePlayerController(playerRoot, targetAnimator);
+            ConfigurePlayerAnimationController(playerRoot);
 
-            // Configure PlayerController.
-            PlayerController playerController = playerRoot.GetComponent<PlayerController>();
-            if (playerController != null)
-            {
-                SerializedObject so = new SerializedObject(playerController);
-
-                SerializedProperty animatorProp = so.FindProperty("animator");
-                if (animatorProp != null)
-                {
-                    animatorProp.objectReferenceValue = targetAnimator;
-                }
-
-                SerializedProperty visualRootProp = so.FindProperty("visualRoot");
-                if (visualRootProp != null)
-                {
-                    Transform model = playerRoot.transform.Find("Model");
-                    if (model != null)
-                    {
-                        visualRootProp.objectReferenceValue = model;
-                    }
-                }
-
-                // JU TPS controller is not trigger-based; it uses float/bool parameters
-                // and the AnimatorOverrideController system for custom clips.
-                SerializedProperty driveTriggerProp = so.FindProperty("driveTriggerAnimator");
-                if (driveTriggerProp != null)
-                {
-                    driveTriggerProp.boolValue = false;
-                }
-
-                // Enable custom locomotion overrides so clips from
-                // Resources/Animations/PlayerReimportOnly/ are applied.
-                SerializedProperty useCustomOverrides = so.FindProperty("useCustomLocomotionOverrides");
-                if (useCustomOverrides != null)
-                {
-                    useCustomOverrides.boolValue = true;
-                }
-
-                so.ApplyModifiedPropertiesWithoutUndo();
-                EditorUtility.SetDirty(playerController);
-            }
-
-            // Save scene.
             if (playerRoot.scene.IsValid())
             {
                 EditorSceneManager.MarkSceneDirty(playerRoot.scene);
@@ -163,13 +116,122 @@ namespace RoguePulse.Editor
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            Debug.Log($"[RoguePulse] JU TPS AnimatorTPS Controller applied to {playerRoot.name}.");
-            EditorUtility.DisplayDialog("RoguePulse",
-                $"JU TPS 动画已绑定到 {playerRoot.name}\n\n" +
-                "Controller: AnimatorTPS Controller\n" +
-                "动作覆盖路径: Resources/Animations/PlayerReimportOnly/\n\n" +
-                "进入 Play 模式测试武器切换动作。",
+            Debug.Log($"[RoguePulse] JU TPS AnimatorTPS controller applied to {playerRoot.name}.");
+            EditorUtility.DisplayDialog(
+                "RoguePulse",
+                $"JU TPS animations applied to {playerRoot.name}.\n\nController: AnimatorTPS Controller\nRoot Motion: Disabled",
                 "OK");
+        }
+
+        private static void ConfigurePlayerController(GameObject playerRoot, Animator targetAnimator)
+        {
+            PlayerController playerController = playerRoot.GetComponent<PlayerController>();
+            if (playerController == null)
+            {
+                return;
+            }
+
+            SerializedObject so = new SerializedObject(playerController);
+
+            SerializedProperty animatorProp = so.FindProperty("animator");
+            if (animatorProp != null)
+            {
+                animatorProp.objectReferenceValue = targetAnimator;
+            }
+
+            SerializedProperty visualRootProp = so.FindProperty("visualRoot");
+            if (visualRootProp != null && TryFindModelRoot(playerRoot, out Transform modelRoot))
+            {
+                visualRootProp.objectReferenceValue = modelRoot;
+            }
+
+            SerializedProperty driveTriggerProp = so.FindProperty("driveTriggerAnimator");
+            if (driveTriggerProp != null)
+            {
+                // AnimatorTPS uses float/bool driven locomotion, not trigger-only flow.
+                driveTriggerProp.boolValue = false;
+            }
+
+            SerializedProperty useCustomOverrides = so.FindProperty("useCustomLocomotionOverrides");
+            if (useCustomOverrides != null)
+            {
+                useCustomOverrides.boolValue = false;
+            }
+
+            so.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(playerController);
+        }
+
+        private static void ConfigurePlayerAnimationController(GameObject playerRoot)
+        {
+            PlayerAnimationController animationController = playerRoot.GetComponent<PlayerAnimationController>();
+            if (animationController == null)
+            {
+                return;
+            }
+
+            if (!TryFindModelRoot(playerRoot, out Transform modelRoot))
+            {
+                return;
+            }
+
+            SerializedObject so = new SerializedObject(animationController);
+            SerializedProperty modelRootProp = so.FindProperty("modelRoot");
+            if (modelRootProp != null)
+            {
+                modelRootProp.objectReferenceValue = modelRoot;
+                so.ApplyModifiedPropertiesWithoutUndo();
+                EditorUtility.SetDirty(animationController);
+            }
+        }
+
+        private static void EnsureControlComponentsEnabled(GameObject playerRoot)
+        {
+            PlayerController playerController = playerRoot.GetComponent<PlayerController>();
+            if (playerController != null && !playerController.enabled)
+            {
+                Undo.RecordObject(playerController, "Enable PlayerController");
+                playerController.enabled = true;
+                EditorUtility.SetDirty(playerController);
+            }
+
+            CharacterController characterController = playerRoot.GetComponent<CharacterController>();
+            if (characterController != null && !characterController.enabled)
+            {
+                Undo.RecordObject(characterController, "Enable CharacterController");
+                characterController.enabled = true;
+                EditorUtility.SetDirty(characterController);
+            }
+        }
+
+        private static bool TryFindModelRoot(GameObject playerRoot, out Transform modelRoot)
+        {
+            modelRoot = null;
+            if (playerRoot == null)
+            {
+                return false;
+            }
+
+            Transform byName = playerRoot.transform.Find("Model");
+            if (byName != null)
+            {
+                modelRoot = byName;
+                return true;
+            }
+
+            for (int i = 0; i < playerRoot.transform.childCount; i++)
+            {
+                Transform child = playerRoot.transform.GetChild(i);
+                if (child.GetComponentInChildren<Renderer>(true) == null)
+                {
+                    continue;
+                }
+
+                modelRoot = child;
+                return true;
+            }
+
+            return false;
         }
 
         private static Animator FindPrimaryAnimator(GameObject playerRoot, Animator[] animators)
@@ -179,10 +241,9 @@ namespace RoguePulse.Editor
                 return null;
             }
 
-            Transform model = playerRoot.transform.Find("Model");
-            if (model != null)
+            if (TryFindModelRoot(playerRoot, out Transform modelRoot))
             {
-                Animator modelAnimator = model.GetComponentInChildren<Animator>(true);
+                Animator modelAnimator = modelRoot.GetComponentInChildren<Animator>(true);
                 if (modelAnimator != null)
                 {
                     return modelAnimator;

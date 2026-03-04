@@ -36,7 +36,7 @@ ModelImporter:
     - serializedVersion: 16
       name: Running Right Turn
       takeName: mixamo.com
-      internalID: -203655887218126122
+      internalID: 0
       firstFrame: 0
       lastFrame: 23
       wrapMode: 0
@@ -45,7 +45,7 @@ ModelImporter:
       cycleOffset: 0
       loop: 0
       hasAdditiveReferencePose: 0
-      loopTime: 1
+      loopTime: 0
       loopBlend: 0
       loopBlendOrientation: 0
       loopBlendPositionY: 1
@@ -879,7 +879,8 @@ ModelImporter:
     hasTranslationDoF: 0
     hasExtraRoot: 1
     skeletonHasParents: 1
-  lastHumanDescriptionAvatarSource: {fileID: 9000000, guid: 7d69ce2eb7998734b83667d67a3dd391, type: 3}
+  lastHumanDescriptionAvatarSource: {fileID: 9000000, guid: 7d69ce2eb7998734b83667d67a3dd391,
+    type: 3}
   autoGenerateAvatarMappingIfUnspecified: 1
   animationType: 3
   humanoidOversampling: 1

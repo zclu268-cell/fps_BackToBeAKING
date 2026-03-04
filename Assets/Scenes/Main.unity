@@ -1,4 +1,4 @@
-%YAML 1.1
+﻿%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!29 &1
 OcclusionCullingSettings:
@@ -1091,8 +1091,8 @@ MonoBehaviour:
   maxPitch: 65
   positionSmoothTime: 0.1
   rotationSmooth: 15
-  mouseSensitivityX: 2
-  mouseSensitivityY: 1.6
+  mouseSensitivityX: 1
+  mouseSensitivityY: 0.8
   invertY: 0
   obstructionRadius: 0.3
   obstructionBuffer: 0.1
@@ -5411,7 +5411,7 @@ Animator:
   m_GameObject: {fileID: 810992441}
   m_Enabled: 1
   m_Avatar: {fileID: 9000000, guid: 556ce3998618b0d489b645fe642cade1, type: 3}
-  m_Controller: {fileID: 9100000, guid: 672723e0dd616d64b904fbbd45ccac37, type: 2}
+  m_Controller: {fileID: 9100000, guid: 315d9f785ea6bb74e9f2ab8642ca78c9, type: 2}
   m_CullingMode: 1
   m_UpdateMode: 0
   m_ApplyRootMotion: 0
@@ -14737,8 +14737,8 @@ MonoBehaviour:
   animatorSpeedDeadZone: 0.03
   enableTalkEmote: 1
   talkEmoteKey: 116
-  driveTriggerAnimator: 1
-  useCustomLocomotionOverrides: 1
+  driveTriggerAnimator: 0
+  useCustomLocomotionOverrides: 0
   customAnimationResourcePath: Animations/PlayerReimportOnly
   useStateDrivenSpeedForLocomotion: 1
   walkSpeedParamValue: 3
@@ -17292,3 +17292,4 @@ SceneRoots:
   - {fileID: 60865926}
   - {fileID: 1865576794}
   - {fileID: 454731637}
+

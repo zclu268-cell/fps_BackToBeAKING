@@ -69,9 +69,19 @@ namespace RoguePulse
         {
             if (_canvasGo == null) return;
 
+            if (!_canvasGo.activeSelf)
+            {
+                _canvasGo.SetActive(true);
+            }
+
+            if (_camTransform == null || !_camTransform.gameObject.activeInHierarchy)
+            {
+                Camera cam = Camera.main;
+                if (cam != null) _camTransform = cam.transform;
+            }
+
             // 保持血条始终在野怪正上方（世界坐标）
-            Vector3 pos = transform.position;
-            pos.y = _barWorldY;
+            Vector3 pos = transform.position + Vector3.up * _barWorldY;
             _canvasGo.transform.position = pos;
 
             // Billboard：朝向摄像机

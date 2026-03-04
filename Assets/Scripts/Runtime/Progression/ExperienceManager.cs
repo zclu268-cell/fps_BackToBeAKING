@@ -32,8 +32,7 @@ namespace RoguePulse
 
         [Header("XP Curve")]
         [SerializeField] private int startLevel = 1;
-        [SerializeField] private int xpBase = 100;
-        [SerializeField] private int xpPerLevel = 60;
+        private const int XpPerLevel = 100;
 
         [Header("Choice")]
         [SerializeField] private float autoPickDelay = 10f;
@@ -100,19 +99,19 @@ namespace RoguePulse
                 return;
             }
 
-            if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1))
+            if (InputCompat.GetKeyDown(KeyCode.Alpha1) || InputCompat.GetKeyDown(KeyCode.Keypad1))
             {
                 ResolveChoice(0);
                 return;
             }
 
-            if (Input.GetKeyDown(KeyCode.Alpha2) || Input.GetKeyDown(KeyCode.Keypad2))
+            if (InputCompat.GetKeyDown(KeyCode.Alpha2) || InputCompat.GetKeyDown(KeyCode.Keypad2))
             {
                 ResolveChoice(1);
                 return;
             }
 
-            if (Input.GetKeyDown(KeyCode.Alpha3) || Input.GetKeyDown(KeyCode.Keypad3))
+            if (InputCompat.GetKeyDown(KeyCode.Alpha3) || InputCompat.GetKeyDown(KeyCode.Keypad3))
             {
                 ResolveChoice(2);
                 return;
@@ -293,7 +292,7 @@ namespace RoguePulse
 
         private int RequiredXp()
         {
-            return Mathf.Max(50, xpBase + (_level - 1) * xpPerLevel);
+            return XpPerLevel;
         }
 
         private void RaiseExperience()
